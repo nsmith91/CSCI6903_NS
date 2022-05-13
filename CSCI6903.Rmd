@@ -1,0 +1,83 @@
+---
+  title: "Practical 1"
+author: "Nathan Smith"
+date: "13/05/2022"
+output:
+  html_document:
+  fig_width: 7
+fig_height: 7
+pdf_document: default
+---
+  
+  ```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) 
+library(datasauRus)
+```
+
+#1.
+
+```{r total_count, echo=FALSE}
+?datasaurus_dozen
+datasaurus_dozen %>%
+  count(dataset)
+```
+Datasaurus dozen has 1846 rows and three variables (columns): dataset, x, and y
+
+#2 Plot of dino 
+```{r dino, echo=FALSE}
+
+dino_data <- datasaurus_dozen %>%
+  filter(dataset == "dino")
+
+ggplot(data = dino_data, mapping = aes(x = x, y = y)) +
+  geom_point()
+
+dino_data %>%
+  summarize(r = cor(x, y))
+```  
+dino correlation coefficien = -0.0645
+
+#3
+```{r star, echo=FALSE}
+
+star_data <- datasaurus_dozen %>%
+  filter(dataset == "star")
+
+ggplot(data = star_data, mapping = aes(x = x, y = y)) +
+  geom_point()
+
+
+star_data %>%
+  summarize(r = cor(x, y))
+```  
+star correlation coefficien = -0.0630
+value is almost identical to dino
+
+# 4
+```{r circle, echo=FALSE}
+
+circle_data <- datasaurus_dozen %>%
+  filter(dataset == "circle")
+
+ggplot(data = circle_data, mapping = aes(x = x, y = y)) +
+  geom_point()
+
+circle_data %>%
+  summarize(r = cor(x, y))
+``` 
+star correlation coefficien = -0.0630
+value is almost identical to star and dino
+
+# 5
+```{r All, echo=FALSE}
+
+ggplot(datasaurus_dozen, aes(x = x, y = y, color = dataset))+
+  geom_point()+
+  facet_wrap(~ dataset, ncol = 3) +
+  theme(legend.position = "none")
+
+datasaurus_dozen %>%
+  group_by(dataset) %>%
+  summarize(r = cor(x, y))
+```
