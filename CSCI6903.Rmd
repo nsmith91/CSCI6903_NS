@@ -1,30 +1,30 @@
 ---
-  title: "Practical 1"
+title: "Practical 1"
 author: "Nathan Smith"
 date: "13/05/2022"
-output:
-  html_document:
-  fig_width: 7
-fig_height: 7
-pdf_document: default
+output: 
+  html_document: 
+    theme: journal
+    fig_width: 5
 ---
   
-  ```{r setup, include=FALSE}
+```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse) 
 library(datasauRus)
 ```
 
-#1.
+## 1. Datasauraus overview
 
 ```{r total_count, echo=FALSE}
 ?datasaurus_dozen
 datasaurus_dozen %>%
   count(dataset)
+head(datasaurus_dozen)
 ```
-Datasaurus dozen has 1846 rows and three variables (columns): dataset, x, and y
+Datasaurus dozen has 1846 rows and three variables: dataset, x, and y
 
-#2 Plot of dino 
+## 2. Plot of dino 
 ```{r dino, echo=FALSE}
 
 dino_data <- datasaurus_dozen %>%
@@ -38,7 +38,7 @@ dino_data %>%
 ```  
 dino correlation coefficien = -0.0645
 
-#3
+## 3. Plot of star
 ```{r star, echo=FALSE}
 
 star_data <- datasaurus_dozen %>%
@@ -54,7 +54,7 @@ star_data %>%
 star correlation coefficien = -0.0630
 value is almost identical to dino
 
-# 4
+## 4. Plot of circle
 ```{r circle, echo=FALSE}
 
 circle_data <- datasaurus_dozen %>%
@@ -69,7 +69,7 @@ circle_data %>%
 star correlation coefficien = -0.0630
 value is almost identical to star and dino
 
-# 5
+## 5. All Plots
 ```{r All, echo=FALSE}
 
 ggplot(datasaurus_dozen, aes(x = x, y = y, color = dataset))+
