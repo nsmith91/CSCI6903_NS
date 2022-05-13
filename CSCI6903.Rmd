@@ -1,5 +1,5 @@
 ---
-title: "Practical 1"
+title: "Practical 0"
 author: "Nathan Smith"
 date: "13/05/2022"
 output: 
@@ -36,7 +36,7 @@ ggplot(data = dino_data, mapping = aes(x = x, y = y)) +
 dino_data %>%
   summarize(r = cor(x, y))
 ```  
-dino correlation coefficien = -0.0645
+dino correlation coefficient = -0.0645
 
 ## 3. Plot of star
 ```{r star, echo=FALSE}
@@ -51,7 +51,7 @@ ggplot(data = star_data, mapping = aes(x = x, y = y)) +
 star_data %>%
   summarize(r = cor(x, y))
 ```  
-star correlation coefficien = -0.0630
+star correlation coefficient = -0.0630
 value is almost identical to dino
 
 ## 4. Plot of circle
@@ -66,8 +66,8 @@ ggplot(data = circle_data, mapping = aes(x = x, y = y)) +
 circle_data %>%
   summarize(r = cor(x, y))
 ``` 
-star correlation coefficien = -0.0630
-value is almost identical to star and dino
+star correlation coefficien = -0.068
+value is very close to dino and star
 
 ## 5. All Plots
 ```{r All, echo=FALSE}
