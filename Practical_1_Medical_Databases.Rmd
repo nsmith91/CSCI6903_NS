@@ -1,0 +1,20 @@
+---
+title: "Practical 1: Medical Databases"
+author: "Nathan Smith"
+date: "20/05/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) 
+```
+
+## 1. Datasauraus overview
+
+```{r total_count, echo=FALSE}
+?datasaurus_dozen
+datasaurus_dozen %>%
+  count(dataset)
+head(datasaurus_dozen)
+```
