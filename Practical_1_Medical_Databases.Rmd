@@ -1,20 +1,396 @@
 ---
-title: "Practical 1: Medical Databases"
+title: "Practical 1: Medical Databases_old"
 author: "Nathan Smith"
 date: "20/05/2022"
-output: html_document
+output: 
+  html_document 
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse) 
+library(reshape2)
+library(lubridate)
+library(rsample)
+library(caret)
+library(xgboost)
+#can add samplen and take a random smaple of 1000 if any trouble running 
 ```
 
-## 1. Datasauraus overview
+Understanding the data
 
-```{r total_count, echo=FALSE}
-?datasaurus_dozen
-datasaurus_dozen %>%
-  count(dataset)
-head(datasaurus_dozen)
+## Question 1
+
+Variables descriptions:
+
+PatientID is a unique patient identifier
+AppointmentID is a unique appointment identifier 
+Gender: male or female (patient)
+ScheduledDate: date the appointment was scheduled
+AppointmentDate: date the appointment took place
+Age: Patient age in years
+Neighbourhood: Area in which the appointment took place 
+SocialWelfare: Patient receives social welfare (Bolsa Família)
+Hypertension: Patient has been previously diagnosed with hypertension (Boolean)
+Diabetes: Patient has been previously diagnosed with diabetes (Boolean)
+AlcoholUseDisorder: Patient has been previously diagnosed with alcohol use disorder (Boolean)
+Disability: Patient has been previously diagnosed with a disability (severity rated 0-4)
+SMSReceived: At least 1 reminder text was sent before the appointment (Boolean)
+NoShow: Patient did not attend scheduled appointment (Boolean: Yes/No)
+
+## Question 2
+
+Three hypotheses as to why people may miss medical appointments:
+
+1. Poor scheduling/no reminders
+2. Distrust in the medical system 
+3. Local events, fear of safety (political instability, COVID, etc.)
+
+## Question 3
+
+Contextual information missing in the data dictionary that could impact analyses:
+
+1. Appointment type not specified
+2. Appointment time of day could play a role (missing)
+3. Time since diagnoses (hypertension, diabetes, disability, and alcohol use disorder)
+4. No physician ID or clinic ID, which could be informative
+5. Is Bolsa Família welfare the only kind of welfare available in these areas?
+
+## Question 4
+Modify code to make reproducible:
+
+```{r read_data, echo=TRUE}
+raw.data <- read_csv('https://raw.githubusercontent.com/nsmith91/CSCI6903_NS/main/2016_05v2_VitoriaAppointmentData.csv')#, col_types='ccfTTicllllflf')
 ```
+
+## Question 5
+Are there any individuals with impossible ages?
+
+```{r check_age, echo=FALSE}
+raw.data %>% filter(Age > 110)
+raw.data %>% filter(Age < 0)
+```
+
+Assuming babies can be counted as patients (age=0), there is only one age value that doesn't make sense, with a value of -1
+
+```{r drop_age, echo=TRUE}
+data <- raw.data %>% filter(Age>=0)
+```
+
+```{r Exploratory, echo=FALSE}
+raw.data %>% filter(Age == 0) %>% select(Hypertension, Diabetes, AlcoholUseDisorder) %>% unique()
+count(raw.data, Neighbourhood, sort = TRUE)
+#checking max number of appointments per patient:
+count(raw.data, PatientID, sort = TRUE)
+```
+## Question 6
+
+What is the maximum number of visits from the same patient?
+
+The maximum number is 88
+
+```{r Correlation, echo=FALSE}
+# let's define a plotting function
+corplot = function(df){
+  cor_matrix_raw <- round(cor(df),2)
+  cor_matrix <- melt(cor_matrix_raw)
+  
+  
+  #Get triangle of the correlation matrix
+  #Lower Triangle
+  get_lower_tri<-function(cor_matrix_raw){
+    cor_matrix_raw[upper.tri(cor_matrix_raw)] <- NA
+    return(cor_matrix_raw)
+  }
+  
+  # Upper Triangle
+  get_upper_tri <- function(cor_matrix_raw){
+    cor_matrix_raw[lower.tri(cor_matrix_raw)]<- NA
+    return(cor_matrix_raw)
+  }
+  
+  
+  upper_tri <- get_upper_tri(cor_matrix_raw)
+  
+  # Melt the correlation matrix
+  cor_matrix <- melt(upper_tri, na.rm = TRUE)
+  
+  # Heatmap Plot
+  cor_graph <- ggplot(data = cor_matrix, aes(Var2, Var1, fill = value))+
+    geom_tile(color = "white")+
+    scale_fill_gradient2(low = "darkorchid", high = "orangered", mid = "grey50", 
+                         midpoint = 0, limit = c(-1,1), space = "Lab", 
+                         name="Pearson\nCorrelation") +
+    theme_minimal()+ 
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                     size = 8, hjust = 1))+
+    coord_fixed()+ geom_text(aes(Var2, Var1, label = value), color = "black", size = 4) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      panel.grid.major = element_blank(),
+      panel.border = element_blank(),
+      panel.background = element_blank(),
+      axis.ticks = element_blank())+
+      ggtitle("Correlation Heatmap")+
+      theme(plot.title = element_text(hjust = 0.5))
+  
+  cor_graph
+}
+
+raw.data$NoShow.numeric = as.numeric(ifelse(raw.data$NoShow=="Yes",1,0))
+
+# Find all numerical vars in dataframe
+numerical.vars = sapply(raw.data, is.numeric)
+
+# Plot Correlation Heatmap
+corplot(raw.data[,numerical.vars])
+```
+
+
+## Question 7
+Which parameters most strongly correlate with missing appointments (NoShow)?
+SMSReceived (0.13) and ScheduledDate (-0.16) correlate most strongly with NoShow
+
+## Question 8
+Are there any other variables which strongly correlate with one another?
+
+Yes, below are the top 5 strongest correlations:
+PatientId and AppointmentID (0.65)
+AppointmentId and AppointmentDate (0.61)
+ScheduledDate and AppointmentDate (0.61)
+Age and hypertension (0.5)
+Hypertension and diabetes (0.43)
+
+## Question 9
+Do you see any issues with PatientID/AppointmentID being included in this plot?
+
+Yes, PatientID and AppointmentID are unique ID variables, not numerical data. These correlations merely suggest how the IDs were generated/assigned.
+
+```{r plot_relationships, echo=FALSE}
+ggplot(raw.data) + 
+  geom_density(aes(x=Age, fill=NoShow), alpha=0.8) + 
+  ggtitle("Density of Age by Attendence")
+#There does seem to be a difference in the distribution of ages of people that miss and don’t miss appointments.However, the shape of this distribution means the actual correlation is near 0 in the heatmap above. This highlights the need to look at individual variables. Let’s take a closer look at age by breaking it into categories.
+
+raw.data <- raw.data %>% mutate(Age.Range=cut_interval(Age, length=10))
+
+ggplot(raw.data) + 
+  geom_bar(aes(x=Age.Range, fill=NoShow)) + 
+  ggtitle("Amount of No Show across Age Ranges")
+
+ggplot(raw.data) + 
+  geom_bar(aes(x=Age.Range, fill=NoShow), position='fill') + 
+  ggtitle("Proportion of No Show across Age Ranges")
+```
+
+## Question 10
+How could you be misled if you only plotted 1 of these 2 plots of attendance by age group?
+
+Only plotting proportion can be misleading because we do not have the total counts, so the age categories with very small numbers do not accurately reflect those age groups (such as 90-100, 110-120). Whereas only looking at total counts may be difficult to visually compare proportions.
+
+```{r plot_SMS, echo=FALSE}
+ggplot(raw.data) + 
+  geom_bar(aes(x=SMSReceived, fill=NoShow), alpha=0.8) + 
+  ggtitle("Count of SMS received across No Show")
+
+ggplot(raw.data) + 
+  geom_bar(aes(x=SMSReceived, fill=NoShow), position='fill', alpha=0.8) + 
+  ggtitle("Proportion of SMS received across No Show")
+```
+
+## Question 11
+From this plot does it look like SMS reminders increase or decrease the chance of someone not attending an appointment? Why might the opposite actually be true (hint: think about biases)?
+From these plots it looks like SMSReceived increases the chance of a NoShow. This may be because the places that send SMS reminders may also have other factors that increase the likelihood of a Noshow. I.e., the places that send texts may be systematically different in some way which makes it less likely that individuals will attend the appointment. 
+
+## Question 12
+
+Create a similar plot which compares the the density of NoShow across the values of disability
+
+```{r plot_disability, echo=FALSE}
+ggplot(raw.data) + 
+  geom_bar(aes(x=Disability, fill=NoShow), alpha=0.8) + 
+  ggtitle("Count of SMS received across No Show")
+
+ggplot(raw.data) + 
+  geom_bar(aes(x=Disability, fill=NoShow), position='fill', alpha=0.8) + 
+  ggtitle("Proportion of SMS received across No Show")
+```
+
+
+```{r plot_neighbourhood, echo=FALSE}
+ggplot(raw.data) + 
+  geom_bar(aes(x=Neighbourhood, fill=NoShow)) + 
+  theme(axis.text.x = element_text(angle=45, hjust=1, size=5)) + 
+  ggtitle('Attendance by Neighbourhood')
+
+ggplot(raw.data) + 
+  geom_bar(aes(x=Neighbourhood, fill=NoShow), position='fill') + 
+  theme(axis.text.x = element_text(angle=45, hjust=1, size=5)) + 
+  ggtitle('Proportional Attendance by Neighbourhood')
+```
+
+## Question 13
+Suggest a reason for differences in attendance rates across neighbourhoods.
+
+Different neighbourhoods may have different characteristics that affect attendance- different kinds of clinics and appointments, different physical environments, different transportation options/ differing accessibility, differing SES of patients.
+
+```{r plot_gender, echo=FALSE}
+ggplot(raw.data) + 
+  geom_bar(aes(x=Gender, fill=NoShow)) +
+   ggtitle("Gender by attendance")
+
+ggplot(raw.data) + 
+  geom_bar(aes(x=Gender, fill=NoShow), position='fill') +
+   ggtitle("Gender by attendance")
+```
+
+## Question 14 
+Create a similar plot using SocialWelfare
+
+```{r plot_SocialWelfare, echo=FALSE}
+ggplot(raw.data) + 
+  geom_bar(aes(x=SocialWelfare, fill=NoShow)) +
+   ggtitle("SocialWelfare by attendance")
+
+ggplot(raw.data) + 
+  geom_bar(aes(x=SocialWelfare, fill=NoShow), position='fill') +
+   ggtitle("SocialWelfare by attendance")
+```
+
+```{r plot_AppointmentDay, echo=FALSE}
+raw.data <- raw.data %>% mutate(AppointmentDay = wday(AppointmentDate, label=TRUE, abbr=TRUE), 
+                                 ScheduledDay = wday(ScheduledDate,  label=TRUE, abbr=TRUE))
+
+ggplot(raw.data) +
+  geom_bar(aes(x=AppointmentDay, fill=NoShow)) +
+  ggtitle("Amount of No Show across Appointment Day") 
+
+ggplot(raw.data) +
+  geom_bar(aes(x=AppointmentDay, fill=NoShow), position = 'fill') +
+  ggtitle("Amount of No Show across Appointment Day") 
+```
+
+```{r plot_Lag, echo=FALSE}
+raw.data <- raw.data %>% mutate(Lag.days=difftime(AppointmentDate, ScheduledDate, units = "days"),
+                                Lag.hours=difftime(AppointmentDate, ScheduledDate, units = "hours"))
+
+ggplot(raw.data) + 
+  geom_density(aes(x=Lag.days, fill=NoShow), alpha=0.7)+
+  ggtitle("Density of Lag (days) by attendance")
+```
+
+## Question 15
+Have a look at the values in lag variable, does anything seem odd?
+
+We have both positive and negative values for lag days (the number of days between the schedule date and the appointment date), which means sometimes the appointment was scheduled after the date it took place?
+
+```{r preditive_modeling, echo=FALSE}
+
+#Let’s see how well we can predict NoShow from the data. We’ll start by preparing the data, followed by splitting it into testing and training set, modeling and finally, evaluating our results. For now we will subsample but please run on full dataset for final execution.data.prep <- raw.data %>% select(-AppointmentID, -PatientID) #%>% sample_n(10000)
+
+data.prep <- raw.data %>% select(-AppointmentID, -PatientID) #%>% sample_n(10000)
+set.seed(42)
+data.split <- initial_split(data.prep, prop = 0.7)
+train  <- training(data.split)
+test <- testing(data.split)
+
+#Let’s now set the cross validation parameters, and add classProbs so we can use AUC as a metric for xgboost.
+
+fit.control <- trainControl(method="cv",number=3,
+                           classProbs = TRUE, summaryFunction = twoClassSummary)
+```
+## Question 16
+Based on the exploratory data analysis, how well do you think this is going to work?
+
+I think it's hard to say how well it will work given the limited EDA performed- nothing immediately stood out (association-wise) and we seemingly have some data inconsistencies (e.g., positive and negative lag days). There is some contextual information missing in the data which may have been helpful- I would guess it will perform moderately well. 
+**
+
+
+**Note- I was getting errors when trying to run your code- even after you adjusted my code I still had to drop one observation to get it to run:**
+
+
+```{r}
+errorlist <- data.prep %>%
+  filter(Neighbourhood == "PARQUE INDUSTRIAL")
+  print(errorlist)
+```
+```{r dropping=FALSE}
+data.prep1<-subset(data.prep, Neighbourhood!="PARQUE INDUSTRIAL")
+```
+
+
+```{r}
+#Remake the test and train split:
+set.seed(42)
+data.split <- initial_split(data.prep1, prop = 0.7)
+train  <- training(data.split)
+test <- testing(data.split)
+```
+
+```{r}
+xgb.grid <- expand.grid(eta=c(0.05),
+                       max_depth=c(4),colsample_bytree=1,
+                       subsample=1, nrounds=500, gamma=0, min_child_weight=5)
+
+xgb.model <- train(NoShow ~ .,data=train, method="xgbTree",metric="ROC",
+                  tuneGrid=xgb.grid, trControl=fit.control)
+
+xgb.pred <- predict(xgb.model, newdata=test)
+xgb.probs <- predict(xgb.model, newdata=test, type="prob")
+```
+
+```{r}
+test <- test %>% mutate(NoShow.numerical = ifelse(NoShow=="Yes",1,0))
+confusionMatrix(xgb.pred, as.factor(test$NoShow), positive="Yes")
+```
+For some reason this chunk of code gave me an error during rendering:
+
+paste("XGBoost Area under ROC Curve: ", round(auc(test$NoShow.numerical, xgb.probs[,2]),3), sep="")
+
+It said it could not find function "auc", even though this runs fine on my console. So I've pasted the output below:
+
+"XGBoost Area under ROC Curve: 0.744"
+
+
+```{r plot, echo=FALSE,fig.align="center"}
+xgb.probs$Actual = test$NoShow.numerical
+xgb.probs$ActualClass = test$NoShow
+xgb.probs$PredictedClass = xgb.pred
+xgb.probs$Match = ifelse(xgb.probs$ActualClass == xgb.probs$PredictedClass,
+                         "Correct","Incorrect")
+# [4.8] Plot Accuracy
+xgb.probs$Match = factor(xgb.probs$Match,levels=c("Incorrect","Correct"))
+ggplot(xgb.probs,aes(x=Yes,y=Actual,color=Match))+
+  geom_jitter(alpha=0.2,size=0.25)+
+  scale_color_manual(values=c("grey40","orangered"))+
+  ggtitle("Visualizing Model Performance", "(Dust Plot)")
+```
+
+Finally, let's close it off with the variable importance of our model:
+
+```{r, figure,echo=FALSE,fig.align="center"}
+results = data.frame(Feature = rownames(varImp(xgb.model)$importance)[1:10],
+                     Importance = varImp(xgb.model)$importance[1:10,])
+
+results$Feature = factor(results$Feature,levels=results$Feature)
+
+
+# [4.10] Plot Variable Importance
+ggplot(results, aes(x=Feature, y=Importance,fill=Importance))+
+  geom_bar(stat="identity")+
+  scale_fill_gradient(low="grey20",high="orangered")+
+  ggtitle("XGBoost Variable Importance")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Question 17
+Using the [caret package](https://topepo.github.io/caret/) fit and evaluate 1 other ML model on this data.
+
+I tried a few different models but kept getting errors, and was unable to get one suuccessfully troubleshoot the errors
+
+
+## Question 18 
+Based on everything, do you think we can trust analyses based on this dataset? Explain your reasoning.
+
+I think you could cautiously trust analyses based on this dataset with thorough EDA, and ideally a conversation with someone who is knowledgeable about how this data was collected. The fact that the most important variable in the NoShow prediction was Lag.days (by a huge margin) is interesting and concerning, as this variable seems to be showing that some appointments were scheduled after the actual appointment had taken place. Is this an error in the data? Or is the data illustrating a broken scheduling system? It's impossible to know without further investigation. 
