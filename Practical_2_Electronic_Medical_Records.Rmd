@@ -1,3 +1,9 @@
+---
+output:
+  html_document: 
+    theme: journal
+  pdf_document: default
+---
 ```{r setup}
 knitr::opts_chunk$set(echo = TRUE)
 library(readr)
@@ -30,6 +36,7 @@ There is no explanation or data dictionary with this dataset, which is a surpris
 
 **1** Using the output of dplyr's `glimpse` command (or rstudio's data viewer by clicking on `raw.data` in the Environment pane) provide a description of what you think each in this dataset contains.
 
+**Q1 Answer: Note_id appears to be a unique identifier for each note. description appears to be topic of the note or reason for the medical visit. medical_specialty is exactly that (the medical specialty). Sample name looks like a combination of procedures and symptoms, transcription is a list of written notes including things like diagnoses, patient history, etc. And lastly, keywords are lists of keywords related to the patient record.**
 
 Let's see how many different medical specialties are featured in these notes: 
 ```{r}
@@ -71,14 +78,47 @@ These are known as stop words and we can remove them relative easily using a lis
 
 **2** How many stop words are there in `tidytext::stop_words`?
 
+**Q2 Answer:**
+```{r}
+?tidytext::stop_words
+```
+
+**According to the help file, there are 1149 stop words in 'tidytext::stop_words'**
+
 ```{r}
 no.stop.tokenized.data <- tokenized.data %>% dplyr::anti_join(tidytext::stop_words) 
 ```
 
 **3** How many unique words are there in each category without stop words and numbers?
 
-Sometimes we are interested in tokenising/segmenting things other than words like whole sentences or paragraphs.  
+**Q3 Answer:** 
+```{r}
+no.stop.tokenized.data %>% dplyr::group_by(medical_specialty) %>% dplyr::distinct(word) %>% dplyr::summarise(n=dplyr::n())
+```
+
+**Excluding stop words, there are 8481, 3853, and 6882 unique words in neurology, neurosurgery, and radiology, respectively.** 
+
+Sometimes we are interested in tokenising/segmenting things other than words like whole sentences or paragraphs. 
+
 **4** How many unique sentences are there in each category? Hint: use `?tidytext::unnest_tokens` to see the documentation for this function.
+
+**Q4 Answer**
+```{r}
+?tidytext::unnest_tokens
+```
+
+**Changing code to produce token sentences:**
+```{r}
+tokenized_sentences.data <- analysis.data %>% tidytext::unnest_tokens(sentence, transcription, token = "sentences", to_lower=TRUE)
+```
+
+**Determining number of unique sentences:**
+```{r}
+tokenized_sentences.data %>% dplyr::group_by(medical_specialty) %>% dplyr::distinct(sentence) %>% dplyr::summarise(n=dplyr::n())
+```
+
+**There are 6644, 2867, and 4565 unique sentences in neurology, neurosurgery, and radiology respectively.**
+
 
 Now that we've tokenized to words and removed stop words, we can find the most commonly word used within each category:
 
@@ -93,6 +133,8 @@ We should lemmatize the tokenized words to prevent over counting of similar word
 Annoyingly, `tidytext` doesn't have a built-in lemmatizer.
 
 **5** Do you think a general purpose lemmatizer will work well for medical data? Why not?
+
+**Q5 Answer: I don't think a general purpose lemmatizer would work well for medical data, because there are a lot of medicine-specific terms that probably wouldn't be captured.**
 
 Unfortunately, a specialised lemmatizer like in `clinspacy` is going to be very painful to install so we will just use a simple lemmatizer for now:
 
@@ -127,9 +169,48 @@ ggplot2::ggplot(lemma.freq, ggplot2::aes(x=proportion,
   ggplot2::theme(legend.position="none") +
   ggplot2:: labs(y="Neurology", x = NULL)
 ```
+
 **6** What does this plot tell you about the relative similarity of lemma frequencies between neurosurgery and neurology and between radiology and neurosurgery? Based on what these specialties involve, is this what you would expect?
 
+**Q6 Answer: It looks like a greater density of overlapping terms in neurology and radiology, compared to neurology and neurosurgery. At face value this is surprising to me- I would have expected a greater overlap between neurology and neurosurgery, but perhaps this just reflects my lack of familiarity with these specialties?**
+**Though the lower end of the distribution (bottom left square clusters) is shifted to the right on the neurosurgery/neurology graph, which suggests these overlapping terms are used a bit more in neurosurgery compared to the lower end of the overlapping terms in radiology.**
+
+
 **7** Modify the above plotting code to do a direct comparison of Neurosurgery and Radiology (i.e., have Neurosurgery or Radiology on the Y-axis and the other 2 specialties as the X facets)
+
+**Q7 Answer:**
+
+**Calculate lemma frequencies:**
+```{r}
+lemma.freq <- lemmatized.data %>% 
+  dplyr::count(medical_specialty, lemma) %>%
+  dplyr::group_by(medical_specialty) %>% 
+  dplyr::mutate(proportion = n / sum(n)) %>%
+  tidyr::pivot_wider(names_from = medical_specialty, values_from = proportion) %>%
+  tidyr::pivot_longer(`Neurosurgery`:`Neurology`,
+               names_to = "medical_specialty", values_to = "proportion")
+```
+
+**Plot the relative proportions:**
+```{r}
+
+ggplot2::ggplot(lemma.freq, ggplot2::aes(x=proportion, 
+                                         y=`Radiology`,
+                                         color=abs(`Radiology` - proportion))) + 
+  ggplot2::geom_abline(color="gray40", lty=2) +
+  ggplot2::geom_jitter(alpha=0.1, size=2.5, width=0.3, height=0.3) +
+  ggplot2::geom_text(ggplot2::aes(label=lemma), check_overlap=TRUE, vjust=1.5) +
+  ggplot2::scale_x_log10(labels=scales::percent_format()) + 
+  ggplot2::scale_y_log10(labels=scales::percent_format()) + 
+  ggplot2::scale_color_gradient(limits=c(0, 0.001), low="darkslategray4", high="gray75") +
+  ggplot2::facet_wrap(~medical_specialty, ncol = 2) +
+  ggplot2::theme(legend.position="none") +
+  ggplot2:: labs(y="Radiology", x = NULL)
+```
+
+
+**Here we see something similar: much greater density of overlap between radiology and neurology, with a right-shift of the lower end of the distribution between radiology and neurosurgery.**
+
 
 ### TF-IDF Normalisation
 
@@ -156,12 +237,22 @@ all.counts.tfidf %>% dplyr::group_by(medical_specialty) %>% dplyr::slice_max(ord
 ```
 **8** Are there any lemmas that stand out in these lists? Why?
 
+**Q8 Answer: I'm not very familiar with neurology, but "impression" is an interesting one. Is this because doctors are writing their subjective impressions of the patient? Perhaps standard terminology for a conservative assessment in the field? Also some frequently used numbers that I'm unsure of why they would be here. The abbreviations (b.i.d., cn, hx, fhx) and other lemmas seem routine.** 
+
 We can look at transcriptions using these unusual lemmas to check how they are used with `stringr::str_detect`
 ```{r}
 analysis.data %>% dplyr::select(medical_specialty, transcription) %>% dplyr::filter(stringr::str_detect(transcription, 'b.i.d')) %>% dplyr::slice(1)
 ```
 
 **9** Extract an example of one of the other unusual "top lemmas" by modifying the above code
+
+**Q9 Answer: I'm familiar with the abbreviations so those didn't seem unusual to me (except cn but a quick Google search clarified that). And from the last code I now see that we likely have a lot of notes from 1993 and 1996, which explains the numbers. So let's see how impression is being used:**
+
+```{r}
+analysis.data %>% dplyr::select(medical_specialty, transcription) %>% dplyr::filter(stringr::str_detect(transcription, 'impression')) %>% dplyr::slice(1)
+```
+
+**Impression seems to be used as indicating the clinician's overall assessment.** 
 
 ## Topic Modelling
 
@@ -243,6 +334,58 @@ Interestingly, neurosurgery assigns mostly to a single topic but radiology and n
 However, this may all just reflect we are using too few topics in our LDA to capture the range of possible assignments. 
 
 **10** Repeat this with a 6 topic LDA, do the top terms from the 3 topic LDA still turn up? How do the specialties get split into sub-topics?
+
+**Q10 Answer:**
+
+**LDA function to fit a 6 topic (`k=6`) LDA-model**
+```{r}
+emr.lda <- topicmodels::LDA(emr.dcm, k=6, control=list(seed=42))
+emr.topics <- tidytext::tidy(emr.lda, matrix='beta')
+```
+
+**Extract the top terms per assigned topic:**
+```{r}
+
+top.terms <- emr.topics %>% dplyr::group_by(topic) %>% 
+  dplyr::slice_max(beta, n=10) %>%
+  dplyr::ungroup() %>%
+  dplyr::arrange(topic, -beta)
+
+
+top.terms %>% 
+  dplyr::mutate(term=tidytext::reorder_within(term, beta, topic)) %>% 
+  ggplot2::ggplot(ggplot2::aes(beta, term, fill=factor(topic))) + 
+    ggplot2::geom_col(show.legend=FALSE) + 
+    ggplot2::facet_wrap(~ topic, scales='free')  +
+    tidytext::scale_y_reordered()
+```
+
+**The 3-topic LDA gave normal, patient, leave, and procedure as the top terms. These still appear to be the top terms with 6 topics. Now let's see how the specialties get split:**
+
+```{r}
+specialty_gamma <- tidytext::tidy(emr.lda, matrix='gamma')
+
+# we need to join in the specialty from the note_id
+note_id_specialty_mapping <- lemmatized.data %>%
+  dplyr::mutate(document=as.character(note_id)) %>% 
+  dplyr::select(document, medical_specialty) %>% 
+  dplyr::distinct()
+
+specialty_gamma <- dplyr::left_join(specialty_gamma, note_id_specialty_mapping)
+```
+
+```{r}
+
+specialty_gamma %>%
+  dplyr::mutate(medical_specialty = reorder(medical_specialty, gamma * topic)) %>%
+  ggplot2::ggplot(ggplot2::aes(factor(topic), gamma)) +
+  ggplot2::geom_boxplot() +
+  ggplot2::facet_wrap(~ medical_specialty) +
+  ggplot2::labs(x = "topic", y = expression(gamma))
+```
+
+**Neurosurgery still largely assigns to a single topic (2), but we do see more of a spread this time with topic 6 also taking a noteable share. Radiology is now mostly concentrated in two topics rather than three, and neurology still largely assigns to three.** 
+
 
 ## Credits
 
