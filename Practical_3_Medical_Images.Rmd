@@ -427,4 +427,4 @@ threshold
 
 **10** Overall how useful do you good is your trained model at predicting pneumonia? Do you think this would be useful? How could you better solve this problem?
 
-*Q10 Answer; This resulted in a specificity of 0.78 and a sensitivity of 0.54. This isn't overly useful at the moment. But this could perhaps be improved with a more complex architecture than mobilenetV2, more training data (or more augmented training data), and more epochs.**
+*Q10 Answer; This resulted in a specificity of 0.78 and a sensitivity of 0.54. This isn't overly useful at the moment. But this could perhaps be improved with a higher-performing architecture than mobilenetV2, more training data (or more augmented training data), and more epochs.**
