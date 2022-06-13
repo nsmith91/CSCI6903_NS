@@ -95,7 +95,7 @@ ggplot2::ggplot(melt, ggplot2::aes(x=ds, y=microvolts, color=Electrode)) +
 
 **3** Similarly, based on the distribution of eye open/close state over time to anticipate any temporal correlation between these states?
 
-**Q3 Answer: It looks like there may be some temporal correlation between these the open/close states**
+**Q3 Answer: It looks like there may be some temporal correlation between the open/close states**
 
 Let's see if we can directly look at the distribution of EEG intensities and see how they related to eye status.
 
@@ -118,7 +118,7 @@ filt_melt_train %>% dplyr::group_by(eyeDetection, Electrode) %>%
 
 **4** Based on these analyses are any electrodes consistently more intense or varied when eyes are open?
 
-*Q4 Answer: 1 is closed and 0 is open. The mean and medians between open and closed on the same electrodes are so close I would say there's no real difference. in terms of variation, 6 of the electrodes have a higher sd when open, while 8 electrodes are higher when closed. Not a huge difference again?*
+*Q4 Answer: 1 is closed and 0 is open. The mean and medians between open and closed on the same electrodes are so close I would say there's no real difference. In terms of variation, 6 of the electrodes have a higher sd when open, while 8 electrodes are higher when closed. Not a huge difference again?*
 
 #### Time-Related Trends
 
@@ -130,7 +130,7 @@ apply(eeg_train, 2, tseries::adf.test)
 ```
 **5** Why are we interested in stationarity? What do the results of these tests tell us? (ignoring the lack of multiple comparison correction...)
 
-**Q5 Answer: Stationarity is important because it ell us whether the distribution changes over time. Or in other words, whether the process generating the time series changes over time. Choice of analytical tools may depend upon the stationarity of the time series. These tests are statistically significant for the sensor data, indicating that we can reject the null hypothesis of the test. The null here appears to be non-stationary. So in this the test is telling us that the time series are stationary.**
+**Q5 Answer: Stationarity is important because it tells us whether the distribution changes over time. Or in other words, whether the process generating the time series changes over time. Choice of analytical tool may depend upon the stationarity of the time series. These tests are statistically significant for the sensor data, indicating that we can reject the null hypothesis of the test. The null here appears to be non-stationary. So in this case the test is telling us that the time series are stationary.**
 
 Then we may want to visually explore patterns of autocorrelation (previous values predict future ones) and cross-correlation (correlation across channels over time) using `forecast::ggAcf` function? 
 
@@ -140,7 +140,8 @@ forecast::ggAcf(eeg_train %>% dplyr::select(-ds))
 
 **7** Do any fields show signs of strong autocorrelation (diagonal plots)? Do any pairs of fields show signs of cross-correlation? Provide examples.
 
-**Q7 Answer: Eye detection shows the strongest autocorrelation. F7, FC5, T7, O1, O2, T8, FC6, and F4 all show a bit of autocorrelation as well, with FC5 and Fc6 looking the strongest. In terms of cross-correlation, there don't appear to be any very strong ones (perhaps FC7 and F7 are the strongest?). Though some sensors have no autocorrelation or cross-correlation: AF3, P7, P8, F8, AF4.**
+**Q7 Answer: Eye detection shows the strongest autocorrelation. F7, FC5, T7, O1, O2, T8, FC6, and F4 all show a bit of autocorrelation as well, with FC5 and FC6 looking the strongest. In terms of cross-correlation, there don't appear to be any very strong ones (perhaps FC7 and F7 are the strongest?). Though some sensors have no autocorrelation or cross-correlation: AF3, P7, P8, F8, AF4.**
+
 #### Frequency-Space 
 
 We can also explore the data in frequency space by using a Fast Fourier Transform.  
@@ -203,10 +204,10 @@ print(model)
 
 **10** What validation performance can you get with `h2o::h2o.xgboost` instead?
 
-**Q10 Answer: Using xgboost results in slight better metrics for the training set, but slightly worse metrics for the valdation set.**
+**Q10 Answer: Using xgboost results in slightly better metrics for the training set, but slightly worse metrics for the validation set.**
 
 ```{r}
-model <- h2o::h2o.xgboost(x = colnames(dplyr::select(eeg_train, -eyeDetection, -ds)), 
+model2 <- h2o::h2o.xgboost(x = colnames(dplyr::select(eeg_train, -eyeDetection, -ds)), 
                       y = colnames(dplyr::select(eeg_train, eyeDetection)),
                       training_frame = h2o::as.h2o(eeg_train),
                       validation_frame = eeg_validate,
@@ -215,14 +216,14 @@ model <- h2o::h2o.xgboost(x = colnames(dplyr::select(eeg_train, -eyeDetection, -
                       max_depth = 4,
                       learn_rate = 0.1)
 
-print(model)
+print(model2)
 
 ```
 
 **11** Using the best performing of the two models calculate the test performance
 
 ```{r test}
-perf <- h2o::h2o.performance(model =model , newdata = h2o::as.h2o(eeg_test))
+perf <- h2o::h2o.performance(model =model2, newdata = h2o::as.h2o(eeg_test))
 print(perf)
 ```
 
